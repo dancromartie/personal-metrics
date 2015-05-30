@@ -1,0 +1,127 @@
+<head>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+<!--<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.6.0/underscore-min.js"><script>-->
+<script type="text/javascript" src="http://code.highcharts.com/highcharts.js"></script>
+<style type="text/css">
+    #chart_containers{
+	width: 100%;
+    }
+    .chart_container{
+        width: 100%;
+	height: 550px;
+    }
+    body{
+	width: 100%
+    }
+</style>
+<script type="text/javascript">
+    $(document).ready(function(){
+	chart_data = {};
+	config = {};
+	render_counter = 0;
+	d = new Date();
+
+	$.getJSON("dump_metrics", function(data){
+	    var metrics = data;
+	    var all_keys = Object.keys(metrics).sort().reverse();
+	    for(var i in all_keys){
+		var key = all_keys[i];
+		var this_series = metrics[key];
+		var input_elem = $("<div>" + key + ": <input name='" + key + "' type='text' /></div>");
+		$(input_elem).prependTo("#metrics_form");
+		var series_as_array = [];
+		for(var date_key in this_series){
+		    var val = this_series[date_key];
+	 	    var year = parseInt(date_key.substring(0,4));
+		    var month = parseInt(date_key.substring(5,7)) - 1;
+		    var day = parseInt(date_key.substring(8,10));
+		    console.log("date parse is", year, month, day);
+		    var date_obj = Date.UTC(year, month, day);
+		    series_as_array.push([date_obj, val]);
+		}
+		console.log(series_as_array);
+		chart_data[key] = series_as_array;
+	    }
+	});
+	
+	$.getJSON("dump_config", function(data){
+	    config = data;
+		//best to get this date and time from ptyhon...
+		$("<p>Time of page load is " + config["time_info"]["now"] + "</p>")
+			.insertBefore("#chart_containers");
+	});
+
+
+	var add_plot_to_container = function(container, name, series, show_cumulative){
+	    //sort by date
+	    series.sort(function(a,b){return a[0] - b[0]})
+	    var sum_series = [];
+	    var current_sum = 0;
+	    for(var i in series){
+		var this_date = series[i][0];
+		current_sum += series[i][1];
+		sum_series.push([this_date, current_sum]);
+	    }
+	    var display_series = [ {name: name, data: series} ];
+	    if(show_cumulative){
+		display_series.push({name: name + "_sum", data: sum_series});
+	    }
+	    $(container).highcharts({
+		chart: {
+		    type: 'column'
+		},
+		title: {
+		    text: name
+		},
+		xAxis: {
+		    type: 'datetime',
+		},
+		series: display_series
+	    });
+	}
+
+
+	var plot_interval = setInterval(function(){ plot_next_chart() }, 3000);
+
+	var plot_next_chart = function(){
+	    if($('#pause_checkbox').is(':checked')){
+		return 0;
+	    }
+	    //var all_keys = _.keys(chart_data);	
+	    // I have no FUCKING idea why underscore wont work with this
+	    var all_keys = Object.keys(chart_data);
+	    all_keys = all_keys.sort();
+	    var index_of_key_to_render = render_counter % all_keys.length;
+	    var key_to_render = all_keys[index_of_key_to_render];
+	    $("#chart_containers").html("");
+	    var container = $("<div id='" + key_to_render + "_chart' class='chart_container'></div>");
+	    var show_cumulative = (typeof(config[key_to_render]) != "undefined" && typeof(config[key_to_render]["show_cumulative"]));
+	    add_plot_to_container(container, key_to_render, chart_data[key_to_render], show_cumulative);
+	    container.appendTo("#chart_containers");
+	    render_counter += 1;
+	}
+
+    });
+</script>
+
+</head>
+<html>
+<body>
+    <h2>Metrics</h2>
+    Pause: <input type='checkbox' id='pause_checkbox'/>
+    <div id="chart_containers">
+    </div>
+    <form id='metrics_form' action='store_metrics' method='POST'>
+	Date override: <input type='text' name='date_override' />
+        <button type='submit'>Submit</button>	
+    </form>
+    <form id='add_key_form' action='add_key' method='POST'>
+	Add a key: <input type='text' name='key_to_add' />
+        <button type='submit'>Submit</button>	
+    </form>
+    <form id='remove_key_form' action='remove_key' method='POST'>
+	Remove a key: <input type='text' name='key_to_remove' />
+        <button type='submit'>Submit</button>	
+    </form>
+</body>
+</html>
